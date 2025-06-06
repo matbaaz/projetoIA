@@ -23,7 +23,6 @@ def segmentar_feijoes_com_contours(imagem_bgr):
         mascaras.append(mask)
         bboxes.append((x, y, w, h))
         valid_contours.append(cnt)
-        print(cnt)
     return mascaras, bboxes, valid_contours
 
 def extrair_features(imagem_bgr, mask, cnt):
