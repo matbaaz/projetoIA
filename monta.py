@@ -3,6 +3,24 @@ import cv2
 import csv
 import numpy as np
 
+def recortar_folha(imagem_bgr):
+    hsv = cv2.cvtColor(imagem_bgr, cv2.COLOR_BGR2HSV)
+    lower_white = np.array([0, 0, 200])
+    upper_white = np.array([180, 60, 255])
+    mask = cv2.inRange(hsv, lower_white, upper_white)
+
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 15))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return imagem_bgr  # fallback: retorna imagem inteira
+
+    maior_contorno = max(contours, key=cv2.contourArea)
+    x, y, w, h = cv2.boundingRect(maior_contorno)
+    recorte = imagem_bgr[y:y+h, x:x+w]
+    return recorte
+
 def segmentar_feijoes_com_contours(imagem_bgr):
     gray = cv2.cvtColor(imagem_bgr, cv2.COLOR_BGR2GRAY)
     blur = cv2.GaussianBlur(gray, (5,5), 0)
@@ -70,6 +88,9 @@ def montar_dataset(pasta_imagens, arquivo_csv_saida):
 
         for classe_str, rotulo in classes.items():
             pasta_classe = os.path.join(pasta_imagens, classe_str)
+            pasta_recorte = os.path.join(pasta_imagens, f"{classe_str}_recorte")
+            os.makedirs(pasta_recorte, exist_ok=True)
+
             for nome_img in os.listdir(pasta_classe):
                 if not nome_img.lower().endswith(('.png','.jpg','.jpeg','.bmp')):
                     continue
@@ -78,14 +99,19 @@ def montar_dataset(pasta_imagens, arquivo_csv_saida):
                 if img is None:
                     continue
 
-                mascaras, bboxes, contours = segmentar_feijoes_com_contours(img)
+                img_crop = recortar_folha(img)
+
+                # Salva imagem recortada na pasta apropriada
+                caminho_recorte = os.path.join(pasta_recorte, nome_img)
+                cv2.imwrite(caminho_recorte, img_crop)
+
+                mascaras, bboxes, contours = segmentar_feijoes_com_contours(img_crop)
                 for mask, cnt in zip(mascaras, contours):
-                    feats = extrair_features(img, mask, cnt)
+                    feats = extrair_features(img_crop, mask, cnt)
                     writer.writerow(feats + [rotulo])
 
     print(f"Dataset gerado em: {arquivo_csv_saida}")
 
 if __name__ == "__main__":
-    # Supondo que o script seja executado diretamente:
-    pasta = os.getcwd()  # pasta atual deve conter 'bons/' e 'ruins/'
+    pasta = os.getcwd()  # pasta atual deve conter subpastas 'bons/' e 'ruins/'
     montar_dataset(pasta, "feijoes_dataset.csv")
