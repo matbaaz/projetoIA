@@ -1,3 +1,4 @@
+
 import os
 import cv2
 import csv
@@ -8,14 +9,11 @@ def recortar_folha(imagem_bgr):
     lower_white = np.array([0, 0, 200])
     upper_white = np.array([180, 60, 255])
     mask = cv2.inRange(hsv, lower_white, upper_white)
-
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 15))
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
-
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not contours:
-        return imagem_bgr  # fallback: retorna imagem inteira
-
+        return imagem_bgr
     maior_contorno = max(contours, key=cv2.contourArea)
     x, y, w, h = cv2.boundingRect(maior_contorno)
     recorte = imagem_bgr[y:y+h, x:x+w]
@@ -89,7 +87,9 @@ def montar_dataset(pasta_imagens, arquivo_csv_saida):
         for classe_str, rotulo in classes.items():
             pasta_classe = os.path.join(pasta_imagens, classe_str)
             pasta_recorte = os.path.join(pasta_imagens, f"{classe_str}_recorte")
+            pasta_segregado = os.path.join(pasta_imagens, f"{classe_str}_segregado")
             os.makedirs(pasta_recorte, exist_ok=True)
+            os.makedirs(pasta_segregado, exist_ok=True)
 
             for nome_img in os.listdir(pasta_classe):
                 if not nome_img.lower().endswith(('.png','.jpg','.jpeg','.bmp')):
@@ -100,18 +100,30 @@ def montar_dataset(pasta_imagens, arquivo_csv_saida):
                     continue
 
                 img_crop = recortar_folha(img)
-
-                # Salva imagem recortada na pasta apropriada
+                nome_base = os.path.splitext(nome_img)[0]
                 caminho_recorte = os.path.join(pasta_recorte, nome_img)
                 cv2.imwrite(caminho_recorte, img_crop)
 
                 mascaras, bboxes, contours = segmentar_feijoes_com_contours(img_crop)
-                for mask, cnt in zip(mascaras, contours):
+
+                for i, (mask, cnt) in enumerate(zip(mascaras, contours)):
                     feats = extrair_features(img_crop, mask, cnt)
                     writer.writerow(feats + [rotulo])
+
+                    x, y, w, h = cv2.boundingRect(cnt)
+                    feijao_crop = img_crop[y:y+h, x:x+w]
+                    mask_crop = mask[y:y+h, x:x+w]
+
+                    # Criar fundo branco e aplicar a máscara
+                    fundo_branco = np.ones_like(feijao_crop, dtype=np.uint8) * 255
+                    feijao_masked = np.where(mask_crop[..., None] == 255, feijao_crop, fundo_branco)
+
+                    nome_feijao = f"{nome_base}_feijao_{i+1:03d}.jpg"
+                    caminho_feijao = os.path.join(pasta_segregado, nome_feijao)
+                    cv2.imwrite(caminho_feijao, feijao_masked)
 
     print(f"Dataset gerado em: {arquivo_csv_saida}")
 
 if __name__ == "__main__":
-    pasta = os.getcwd()  # pasta atual deve conter subpastas 'bons/' e 'ruins/'
+    pasta = os.getcwd()
     montar_dataset(pasta, "feijoes_dataset.csv")
