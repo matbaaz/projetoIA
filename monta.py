@@ -4,6 +4,7 @@ import cv2
 import csv
 import numpy as np
 
+#Recorta a imagem  excluindo a parte marrom e mantendo apenas a parte branca da folha
 def recortar_folha(imagem_bgr):
     hsv = cv2.cvtColor(imagem_bgr, cv2.COLOR_BGR2HSV)
     lower_white = np.array([0, 0, 200])
@@ -71,8 +72,43 @@ def extrair_features(imagem_bgr, mask, cnt):
     ] + hu_log
     return features
 
+def processar_feijao(img_crop, mask, cnt, writer, rotulo, nome_base, pasta_segregado, indice):
+    """
+    Processa um feijão individual, extraindo suas características, salvando no CSV e gerando uma imagem isolada.
+
+    Args:
+        img_crop: Imagem recortada contendo o feijão
+        mask: Máscara binária do feijão
+        cnt: Contorno do feijão
+        writer: Objeto CSV writer para salvar as características
+        rotulo: Rótulo da classe (0 para ruins, 1 para bons)
+        nome_base: Nome base para o arquivo de saída
+        pasta_segregado: Diretório para salvar as imagens segmentadas
+        indice: Índice do feijão na imagem atual
+
+    Returns:
+        None
+    """
+    # Extrai características e salva no CSV
+    feats = extrair_features(img_crop, mask, cnt)
+    writer.writerow(feats + [rotulo])
+
+    # Recorta o feijão e sua máscara
+    x, y, w, h = cv2.boundingRect(cnt)
+    feijao_crop = img_crop[y:y+h, x:x+w]
+    mask_crop = mask[y:y+h, x:x+w]
+
+    # Cria fundo branco e aplica a máscara
+    fundo_branco = np.ones_like(feijao_crop, dtype=np.uint8) * 255
+    feijao_masked = np.where(mask_crop[..., None] == 255, feijao_crop, fundo_branco)
+
+    # Salva a imagem do feijão isolado
+    nome_feijao = f"{nome_base}_feijao_{indice+1:03d}.jpg"
+    caminho_feijao = os.path.join(pasta_segregado, nome_feijao)
+    cv2.imwrite(caminho_feijao, feijao_masked)
+
 def montar_dataset(pasta_imagens, arquivo_csv_saida):
-    classes = {'ruins': 0, 'bons': 1}
+    classes = {'ruins_recorte': 0, 'bons_recorte': 1}
     header = [
         'mean_b','mean_g','mean_r',
         'std_b','std_g','std_r',
@@ -83,12 +119,12 @@ def montar_dataset(pasta_imagens, arquivo_csv_saida):
     with open(arquivo_csv_saida, mode='w', newline='') as f_out:
         writer = csv.writer(f_out, delimiter=';')
         writer.writerow(header)
-
+        #Itera sobre as classes ruins e bons
         for classe_str, rotulo in classes.items():
             pasta_classe = os.path.join(pasta_imagens, classe_str)
-            pasta_recorte = os.path.join(pasta_imagens, f"{classe_str}_recorte")
+            #pasta_recorte = os.path.join(pasta_imagens, f"{classe_str}_recorte")
             pasta_segregado = os.path.join(pasta_imagens, f"{classe_str}_segregado")
-            os.makedirs(pasta_recorte, exist_ok=True)
+            os.makedirs(pasta_classe, exist_ok=True)
             os.makedirs(pasta_segregado, exist_ok=True)
 
             for nome_img in os.listdir(pasta_classe):
@@ -99,28 +135,15 @@ def montar_dataset(pasta_imagens, arquivo_csv_saida):
                 if img is None:
                     continue
 
-                img_crop = recortar_folha(img)
                 nome_base = os.path.splitext(nome_img)[0]
-                caminho_recorte = os.path.join(pasta_recorte, nome_img)
-                cv2.imwrite(caminho_recorte, img_crop)
+                #img_crop = recortar_folha(img)
+                #caminho_recorte = os.path.join(pasta_classe, nome_img)
+                #cv2.imwrite(caminho_recorte, img_crop)
 
-                mascaras, bboxes, contours = segmentar_feijoes_com_contours(img_crop)
+                mascaras, bboxes, contours = segmentar_feijoes_com_contours(img)
 
                 for i, (mask, cnt) in enumerate(zip(mascaras, contours)):
-                    feats = extrair_features(img_crop, mask, cnt)
-                    writer.writerow(feats + [rotulo])
-
-                    x, y, w, h = cv2.boundingRect(cnt)
-                    feijao_crop = img_crop[y:y+h, x:x+w]
-                    mask_crop = mask[y:y+h, x:x+w]
-
-                    # Criar fundo branco e aplicar a máscara
-                    fundo_branco = np.ones_like(feijao_crop, dtype=np.uint8) * 255
-                    feijao_masked = np.where(mask_crop[..., None] == 255, feijao_crop, fundo_branco)
-
-                    nome_feijao = f"{nome_base}_feijao_{i+1:03d}.jpg"
-                    caminho_feijao = os.path.join(pasta_segregado, nome_feijao)
-                    cv2.imwrite(caminho_feijao, feijao_masked)
+                    processar_feijao(img, mask, cnt, writer, rotulo, nome_base, pasta_segregado, i)
 
     print(f"Dataset gerado em: {arquivo_csv_saida}")
 
