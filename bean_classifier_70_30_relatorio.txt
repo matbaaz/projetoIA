@@ -1,0 +1,27 @@
+### Split: 70/30
+Melhores parâmetros: {'clf__max_depth': None, 'clf__min_samples_leaf': 2, 'clf__n_estimators': 100}
+Melhor F1 CV GridSearch: 0.9063
+
+=== Métricas Gerais ===
+Accuracy: 0.8971
+Precision (w): 0.8972
+Recall    (w): 0.8971
+F1-score  (w): 0.8971
+
+=== Matriz de Confusão ===
+[[132  15]
+ [ 17 147]]
+
+=== Relatório de Classificação ===
+              precision    recall  f1-score   support
+
+           0       0.89      0.90      0.89       147
+           1       0.91      0.90      0.90       164
+
+    accuracy                           0.90       311
+   macro avg       0.90      0.90      0.90       311
+weighted avg       0.90      0.90      0.90       311
+
+
+=== 5-Fold CV F1 ===
+Média: 0.9075 ± 0.0213
